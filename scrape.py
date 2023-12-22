@@ -14,4 +14,3 @@ def search(query: str) -> List[str]:
 print(search("giant"))
 print(search("surly ice cream truck"))
 print(search("surly wednesday"))
-print("UPDATE")
