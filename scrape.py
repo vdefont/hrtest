@@ -1,7 +1,14 @@
-from typing import List
+"""
+TODO - upload to heroku
+"""
+
+
+from typing import List, NamedTuple
 
 import requests
 from bs4 import BeautifulSoup
+
+from send_email import send_email
 
 """
 TODO:
@@ -12,6 +19,7 @@ TODO:
 
 CL_CITIES = [["fresno", 93702], ["wichita", 67202], ["washingtondc", 20004]]
 
+
 def fetch_links(url: str) -> List[str]:
     txt = requests.get(url).text
     soup = BeautifulSoup(txt, "html.parser")
@@ -19,26 +27,54 @@ def fetch_links(url: str) -> List[str]:
     links = [r.find("a").get("href") for r in results]
     return links
 
-def link_has_words(link: str, req_words: List[str]) -> List[str]:
+def link_has_words(link: str, title_words: List[str], words: List[str]) -> List[str]:
     txt = requests.get(link).text
-    return all(word in txt for word in req_words)
-def filter_links(links: List[str], req_words: List[str]) -> List[str]:
+    title = BeautifulSoup(txt, "html.parser").find('title').string.lower()
+    return all(w in title for w in title_words) and all(w in txt.lower() for w in words)
 
-    return [l for l in links if link_has_words(l, req_words)]
-def search(query: str, req_words: List[str]) -> List[str]:
-    """
+def filter_links(links: List[str], title_words: List[str], words: List[str]) -> List[str]:
 
-    :param query: What to search for on CL
-    :param req_words: Each of these words must appear someplace in the listing (eg. title, body)
-    :return:
-    """
-    query_fmt = "%20".join(query.split())
+    return [l for l in links if link_has_words(l, title_words, words)]
+
+class SearchInfo(NamedTuple):
+    # Craigslist query
+    query: str
+    # Result must have all these words in the title
+    title_words: List[str]
+    # Result must have all these words anywhere in the listing
+    words: List[str] = []
+
+def search(search: SearchInfo) -> str:
+    query_fmt = "%20".join(search.query.split())
     links = []
     for city, zip in CL_CITIES:
-        url = f"https://{city}.craigslist.org/search/sss?bundleDuplicates=1&postal={zip}&postedToday=1&query={query_fmt}&search_distance=1000&sort=date#search=1~gallery~0~0"
+        url = f"https://{city}.craigslist.org/search/sss?bundleDuplicates=1" \
+              f"&postal={zip}&postedToday=1&query={query_fmt}&search_distance=1000&sort=date#search=1~list~0~0"
         links.extend(fetch_links(url))
-    return filter_links(links, req_words)
+    links = filter_links(links, search.title_words, search.words)
+    return "\n".join([search.query] + links)
 
+def run_searches(searches: List[SearchInfo]) -> str:
+    return "\n\n".join(search(s) for s in searches)
 
-print(search("surly ice cream truck", ["surly", "ice cream truck"]))
-print(search("surly", ["surly", "pack rat"]))
+SEARCHES = [
+    SearchInfo(
+        query="surly ice cream truck",
+        title_words=["surly"],
+        words=["surly", "ice cream"],
+    ),
+    SearchInfo(
+        query="surly wednesday",
+        title_words=["surly"],
+        words=["surly", "wednesday"],
+    ),
+    SearchInfo(
+        query="leica m6",
+        title_words=["leica"],
+        words=["m6"],
+    ),
+]
+
+results = run_searches(SEARCHES)
+print("SEARCH RESULTS:\n\n", results)
+send_email(results)
